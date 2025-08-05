@@ -1,7 +1,10 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from psrqpy import QueryATNF
 import os
+import pandas as pd
+import json
+from io import BytesIO, StringIO
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for React frontend
@@ -143,8 +146,86 @@ def get_atnf_parameters():
 # Tool-specific API endpoints
 @app.route('/api/tools/adtn-catalog/data', methods=['POST'])
 def adtn_catalog_data():
-    query = QueryATNF(params=request.json.get('parameters', []),psrs=request.json.get('pulsarNames', []))
-    return jsonify(query.data)
+    pulsar_names = request.json.get('pulsarNames', [])
+    parameters = request.json.get('parameters', [])
+    
+    # If no pulsar names provided, query the entire catalog
+    if not pulsar_names or (len(pulsar_names) == 1 and pulsar_names[0] == ''):
+        query = QueryATNF(params=parameters)
+    else:
+        query = QueryATNF(params=parameters, psrs=pulsar_names)
+    
+    return jsonify(query.pandas.to_dict('records'))
+
+@app.route('/api/tools/adtn-catalog/download', methods=['POST'])
+def adtn_catalog_download():
+    try:
+        data = request.json.get('data', [])
+        parameters = request.json.get('parameters', [])
+        file_format = request.json.get('format', 'csv').lower()
+        
+        if not data:
+            return jsonify({"error": "No data to download"}), 400
+        
+        # Convert data to pandas DataFrame
+        df = pd.DataFrame(data)
+        
+        # Reorder columns to match the parameters order if specified
+        if parameters:
+            # Only include columns that exist in the DataFrame
+            available_params = [param for param in parameters if param in df.columns]
+            if available_params:
+                df = df[available_params]
+        
+        # Generate file based on format
+        if file_format == 'csv':
+            output = StringIO()
+            df.to_csv(output, index=False)
+            output.seek(0)
+            
+            # Convert StringIO to BytesIO for send_file
+            bytes_output = BytesIO()
+            bytes_output.write(output.getvalue().encode('utf-8'))
+            bytes_output.seek(0)
+            
+            return send_file(
+                bytes_output,
+                mimetype='text/csv',
+                as_attachment=True,
+                download_name='atnf_catalog.csv'
+            )
+            
+        elif file_format == 'json':
+            output = BytesIO()
+            json_data = df.to_dict('records')
+            output.write(json.dumps(json_data, indent=2).encode('utf-8'))
+            output.seek(0)
+            
+            return send_file(
+                output,
+                mimetype='application/json',
+                as_attachment=True,
+                download_name='atnf_catalog.json'
+            )
+            
+        elif file_format == 'xlsx':
+            output = BytesIO()
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                df.to_excel(writer, sheet_name='ATNF Catalog', index=False)
+            output.seek(0)
+            
+            return send_file(
+                output,
+                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                as_attachment=True,
+                download_name='atnf_catalog.xlsx'
+            )
+            
+        else:
+            return jsonify({"error": f"Unsupported format: {file_format}"}), 400
+            
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == '__main__':
