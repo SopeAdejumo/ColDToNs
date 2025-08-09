@@ -1,0 +1,35 @@
+{
+  "name": "coldtons",
+  "version": "1.0.0",
+  "description": "ColDToNs - Collection of Data and Tools for Neutron Stars",
+  "main": "backend/main.py",
+  "scripts": {
+    "install-deps": "cd frontend && npm install",
+    "build-frontend": "cd frontend && npm run build",
+    "build": "npm run install-deps && npm run build-frontend",
+    "start": "cd backend && python main.py",
+    "dev-backend": "cd backend && python main.py",
+    "dev-frontend": "cd frontend && npm run dev",
+    "dev": "concurrently \"npm run dev-backend\" \"npm run dev-frontend\""
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "python": ">=3.8"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/coldtons.git"
+  },
+  "keywords": [
+    "neutron-stars",
+    "astrophysics",
+    "pulsar",
+    "astronomy",
+    "data-analysis"
+  ],
+  "author": "ColDToNs Team",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

@@ -1,6 +1,33 @@
 # ColDToNs (Collection of Data and Tools for Neutron Stars)
-ColDToNs is a unified toolkit for the study and visualization of neutron star data. It combines several existing powerful scientific tools and libraries into one user-friendly, cross-platform desktop application. Designed for both amateur astronomers and professional astrophysicists, ColDToNs aims to democratize access to cutting-edge research and enhance the understanding of these extreme cosmic objects.
+ColDToNs is a unified toolkit for the study and visualization of neutron star data. It combines several existing powerful scientific tools and libraries into one user-friendly, cross-platform web application. Designed for both amateur astronomers and professional astrophysicists, ColDToNs aims to democratize access to cutting-edge research and enhance the understanding of these extreme cosmic objects.
+
 ### Find the live prototype here: [https://coldtons.com](https://coldtons.com)
+
+## 🚀 Quick Start
+
+### Deployment
+This application is configured as a single web service that can be easily deployed to Render. See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed deployment instructions.
+
+### Local Development
+```bash
+# Install dependencies
+npm run install-deps
+
+# Build frontend
+npm run build-frontend
+
+# Start the application
+npm start
+```
+
+For development mode with hot reloading:
+```bash
+# Terminal 1 - Backend
+npm run dev-backend
+
+# Terminal 2 - Frontend
+npm run dev-frontend
+```
 ## Functions
 The toolkit's functionalities are organized to provide a comprehensive suite of tools for exploring, analyzing, and visualizing neutron stars.
 

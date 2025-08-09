@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file, send_from_directory
 from flask_cors import CORS
 from psrqpy import QueryATNF
 import os
@@ -6,8 +6,23 @@ import pandas as pd
 import json
 from io import BytesIO, StringIO
 
-app = Flask(__name__)
+# Create Flask app with static folder pointing to built frontend
+app = Flask(__name__, static_folder='../frontend/dist', static_url_path='')
 CORS(app)  # Enable CORS for React frontend
+
+# Serve React App
+@app.route('/')
+def serve_react_app():
+    return send_from_directory(app.static_folder, 'index.html')
+
+@app.route('/<path:path>')
+def serve_static_files(path):
+    # Serve static files (CSS, JS, images, etc.)
+    if path != "" and os.path.exists(os.path.join(app.static_folder, path)):
+        return send_from_directory(app.static_folder, path)
+    else:
+        # For client-side routing, serve index.html for unknown routes
+        return send_from_directory(app.static_folder, 'index.html')
 
 # API Routes
 @app.route('/api/health', methods=['GET'])
