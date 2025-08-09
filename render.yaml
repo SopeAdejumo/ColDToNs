@@ -2,17 +2,17 @@ services:
   - type: web
     name: coldtons-backend
     env: python
+    plan: free
     buildCommand: cd backend && pip install -r requirements.txt
-    startCommand: cd backend && gunicorn main:app
+    startCommand: cd backend && gunicorn main:app --bind 0.0.0.0:$PORT
     envVars:
       - key: PYTHON_VERSION
         value: 3.9.0
-      - key: PORT
-        value: 10000
 
   - type: web
     name: coldtons-frontend
     env: node
+    plan: free
     buildCommand: cd frontend && npm install && npm run build
     startCommand: cd frontend && npm run preview -- --port $PORT --host 0.0.0.0
     envVars:
