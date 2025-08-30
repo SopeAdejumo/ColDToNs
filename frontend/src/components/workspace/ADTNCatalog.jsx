@@ -11,18 +11,25 @@ const ADTNCatalog = () => {
   const [queryResults, setQueryResults] = useState([]);
   const [queryParams, setQueryParams] = useState([]);
   const [showDownloadDropdown, setShowDownloadDropdown] = useState(false);
+  const [heasarcJnames, setHeasarcJnames] = useState(new Set());
 
   useEffect(() => {
-    // Fetch ATNF parameters from backend
-    const fetchParams = async () => {
+    // Fetch ATNF parameters and HEASARC JNAMEs from backend
+    const fetchData = async () => {
       try {
-        const response = await axios.get("/api/atnf-parameters");
-        setAtnfParams(response.data);
+        // Fetch ATNF parameters
+        const atnfResponse = await axios.get("/api/atnf-parameters");
+        setAtnfParams(atnfResponse.data);
+        
+        // Fetch HEASARC JNAMEs
+        const heasarcResponse = await axios.get("/api/heasarc-jnames");
+        setHeasarcJnames(new Set(heasarcResponse.data));
+        console.log(`Loaded ${heasarcResponse.data.length} HEASARC JNAMEs`);
       } catch (error) {
-        console.error("Failed to fetch ATNF parameters:", error);
+        console.error("Failed to fetch data:", error);
       }
     };
-    fetchParams();
+    fetchData();
   }, []);
 
   // Close dropdown when clicking outside
@@ -40,7 +47,7 @@ const ADTNCatalog = () => {
   }, [showDownloadDropdown]);
 
   const filteredParams = atnfParams.filter((param) =>
-    param.toLowerCase().includes(searchFilter.toLowerCase())
+    param.toLowerCase().includes(searchFilter.toLowerCase()) && param !== 'JNAME'
   );
 
   const handleParamToggle = (param) => {
@@ -56,6 +63,38 @@ const ADTNCatalog = () => {
       setSelectedParams([...filteredParams]);
     }
     setSelectAll(!selectAll);
+  };
+
+  const handleHeasarcQuery = async (jname) => {
+    try {
+      console.log(`Querying HEASARC for pulsar: ${jname}`);
+      const response = await axios.post("/api/tools/adtn-catalog/heasarc", {
+        jname: jname
+      });
+      
+      // Handle the response
+      console.log("HEASARC query response:", response.data);
+      
+      if (response.data.available && response.data.data) {
+        console.log(`Found ${response.data.count} HEASARC observations for ${jname}`);
+        console.log("HEASARC data:", response.data.data);
+        
+        // TODO: Display results in a modal or separate section
+        // For now, show an alert with basic info
+        alert(`Found ${response.data.count} HEASARC observations for ${jname}. Check console for details.`);
+      } else {
+        console.log(`No HEASARC data found for ${jname}`);
+        alert(`No HEASARC observations found for ${jname}`);
+      }
+      
+    } catch (error) {
+      console.error("HEASARC query failed:", error);
+      if (error.response && error.response.status === 404) {
+        alert(`${jname} not found in HEASARC database`);
+      } else {
+        alert(`Failed to query HEASARC for ${jname}: ${error.message}`);
+      }
+    }
   };
 
   const handleDownload = async (format) => {
@@ -93,12 +132,17 @@ const ADTNCatalog = () => {
   const handleQuery = async () => {
     setLoading(true);
     try {
+      // Always include JNAME in the parameters
+      const parametersWithJname = selectedParams.includes('JNAME') 
+        ? selectedParams 
+        : ['JNAME', ...selectedParams];
+      
       const response = await axios.post("/api/tools/adtn-catalog/data", {
         pulsarNames: pulsarNames
           .split(",")
           .map((name) => name.trim())
           .filter((name) => name),
-        parameters: selectedParams,
+        parameters: parametersWithJname,
       });
       
       // Manually parse the incoming string as an array
@@ -126,7 +170,7 @@ const ADTNCatalog = () => {
       
       setQueryResults(parsedResults);
       // Store the parameters used for this query to display in the table
-      setQueryParams([...selectedParams]);
+      setQueryParams([...parametersWithJname]);
       // Handle the response data here
     } catch (error) {
       console.error("Query failed:", error);
@@ -218,15 +262,16 @@ return (
           </div>
 
           <p className="text-sm text-gray-400 mt-2">
-            Choose the catalogue parameters to retrieve (e.g., JNAME, RAJ, DECJ,
-            P0, DM).
+            Choose the catalogue parameters to retrieve (e.g., RAJ, DECJ, P0, DM).
+            <br />
+            <span className="text-blue-400">Note: JNAME is always included. JNAMEs available in HEASARC will be clickable links.</span>
           </p>
 
           {/* Query Button */}
           <button
             className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
             onClick={handleQuery}
-            disabled={loading || selectedParams.length === 0}
+            disabled={loading}
           >
             {loading ? "Querying..." : "Query Catalog"}
           </button>
@@ -307,7 +352,22 @@ return (
                           >
                             {row[param] === null || row[param] === undefined 
                               ? <span className="text-gray-500 italic">N/A</span>
-                              : row[param]}
+                              : param === 'JNAME' && heasarcJnames.has(row[param])
+                                ? <button
+                                    onClick={() => handleHeasarcQuery(row[param])}
+                                    className="text-blue-400 hover:text-blue-300 underline cursor-pointer"
+                                    title={`Query HEASARC for ${row[param]} (available in HEASARC)`}
+                                  >
+                                    {row[param]}
+                                  </button>
+                                : param === 'JNAME'
+                                ? <span 
+                                    className="text-gray-300"
+                                    title={`${row[param]} (not available in HEASARC)`}
+                                  >
+                                    {row[param]}
+                                  </span>
+                                : row[param]}
                           </td>
                         ))}
                       </tr>

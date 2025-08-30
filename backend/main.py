@@ -5,10 +5,54 @@ import os
 import pandas as pd
 import json
 from io import BytesIO, StringIO
+from astroquery.heasarc import Heasarc
 
 # Create Flask app with static folder pointing to built frontend
 app = Flask(__name__, static_folder='../frontend/dist', static_url_path='')
 CORS(app)  # Enable CORS for React frontend
+
+# Global variable to cache HEASARC data
+heasarc_data = None
+heasarc_jnames = set()
+
+def initialize_heasarc_data():
+    """Initialize HEASARC data on startup"""
+    global heasarc_data, heasarc_jnames
+    try:
+        print("Initializing HEASARC data...")
+        heasarc = Heasarc()
+        # Query the nicermastr catalog for all observations
+        print("Querying HEASARC nicermastr catalog...")
+        heasarc_data = heasarc.query_region(catalog="nicermastr", spatial='all-sky')
+        
+        if heasarc_data is not None and len(heasarc_data) > 0:
+            # Extract unique JNAMEs from the HEASARC data
+            # The column name might be different, let's check common variations
+            possible_jname_columns = ['JNAME', 'jname', 'NAME', 'name', 'OBJECT', 'object']
+            jname_column = None
+            
+            for col in possible_jname_columns:
+                if col in heasarc_data.colnames:
+                    jname_column = col
+                    break
+            
+            if jname_column:
+                heasarc_jnames = set(str(jname).strip() for jname in heasarc_data[jname_column] if jname)
+                print(f"Found {len(heasarc_jnames)} unique JNAMEs in HEASARC database")
+                print(f"Sample JNAMEs: {list(heasarc_jnames)[:5]}")
+            else:
+                print("Warning: Could not find JNAME column in HEASARC data")
+                print(f"Available columns: {heasarc_data.colnames}")
+        else:
+            print("Warning: No HEASARC data retrieved")
+            
+    except Exception as e:
+        print(f"Error initializing HEASARC data: {e}")
+        heasarc_data = None
+        heasarc_jnames = set()
+
+# Initialize HEASARC data when the app starts
+initialize_heasarc_data()
 
 # Serve React App
 @app.route('/')
@@ -27,7 +71,16 @@ def serve_static_files(path):
 # API Routes
 @app.route('/api/health', methods=['GET'])
 def health_check():
-    return jsonify({"status": "healthy", "message": "ColDToNs API is running"})
+    global heasarc_data, heasarc_jnames
+    heasarc_status = {
+        "available": heasarc_data is not None,
+        "jname_count": len(heasarc_jnames)
+    }
+    return jsonify({
+        "status": "healthy", 
+        "message": "ColDToNs API is running",
+        "heasarc": heasarc_status
+    })
 
 @app.route('/api/menu-config', methods=['GET'])
 def get_menu_config():
@@ -158,6 +211,12 @@ def get_atnf_parameters():
     ]
     return jsonify(atnf_params)
 
+@app.route('/api/heasarc-jnames', methods=['GET'])
+def get_heasarc_jnames():
+    """Return list of JNAMEs available in HEASARC database"""
+    global heasarc_jnames
+    return jsonify(list(heasarc_jnames))
+
 # Tool-specific API endpoints
 @app.route('/api/tools/adtn-catalog/data', methods=['POST'])
 def adtn_catalog_data():
@@ -239,6 +298,81 @@ def adtn_catalog_download():
         else:
             return jsonify({"error": f"Unsupported format: {file_format}"}), 400
             
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/tools/adtn-catalog/heasarc', methods=['POST'])
+def adtn_catalog_heasarc():
+    """
+    Query HEASARC database for a specific pulsar JNAME
+    Based on the usage pattern from nicer_test.py
+    """
+    try:
+        jname = request.json.get('jname', '')
+        
+        if not jname:
+            return jsonify({"error": "JNAME is required"}), 400
+        
+        global heasarc_data, heasarc_jnames
+        
+        # Check if JNAME exists in our cached data
+        if jname not in heasarc_jnames:
+            return jsonify({
+                "error": f"JNAME {jname} not found in HEASARC database",
+                "jname": jname,
+                "available": False
+            }), 404
+        
+        # If we have the data cached, filter it for this specific JNAME
+        if heasarc_data is not None:
+            # Find the correct JNAME column
+            possible_jname_columns = ['JNAME', 'jname', 'NAME', 'name', 'OBJECT', 'object']
+            jname_column = None
+            
+            for col in possible_jname_columns:
+                if col in heasarc_data.colnames:
+                    jname_column = col
+                    break
+            
+            if jname_column:
+                # Filter data for the specific JNAME
+                mask = [str(row[jname_column]).strip() == jname for row in heasarc_data]
+                filtered_data = heasarc_data[mask]
+                
+                if len(filtered_data) > 0:
+                    # Convert to pandas DataFrame for easier JSON serialization
+                    df = filtered_data.to_pandas()
+                    
+                    # Convert to records format
+                    records = df.to_dict('records')
+                    
+                    return jsonify({
+                        "jname": jname,
+                        "available": True,
+                        "count": len(records),
+                        "data": records,
+                        "columns": list(df.columns),
+                        "message": f"Found {len(records)} HEASARC observations for {jname}"
+                    })
+                else:
+                    return jsonify({
+                        "error": f"No observations found for {jname} in HEASARC data",
+                        "jname": jname,
+                        "available": False
+                    }), 404
+            else:
+                return jsonify({
+                    "error": "Could not find JNAME column in HEASARC data",
+                    "jname": jname,
+                    "available": False
+                }), 500
+        else:
+            return jsonify({
+                "error": "HEASARC data not available",
+                "jname": jname,
+                "available": False
+            }), 500
+        
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
